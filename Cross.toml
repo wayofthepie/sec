@@ -1,0 +1,5 @@
+[target.x86_64-pc-windows-gnu]
+image = "sec-build"
+
+[target.i686-pc-windows-gnu]
+image = "sec-build"
