@@ -1,9 +1,11 @@
 use gpgme::{Context, Data, Protocol};
 
+/// Wrapper for GPG functionality.
 pub struct Gpg {
     protocol: Protocol,
 }
 
+/// High level implementation of GPG functionality.
 impl Gpg {
     pub fn new() -> Self {
         Self {
@@ -11,6 +13,7 @@ impl Gpg {
         }
     }
 
+    /// Encrypt the given plaintext bytes with the key indentified by the key ID.
     pub fn encrypt(&self, key_id: &str, plaintext: &[u8]) -> anyhow::Result<Vec<u8>> {
         let mut context = Context::from_protocol(self.protocol)?;
         let key = context.find_keys(Some(key_id))?.next().unwrap().unwrap();
@@ -19,6 +22,7 @@ impl Gpg {
         Ok(ciphertext)
     }
 
+    /// Decrypt the given ciphertext.
     pub fn decrypt(&self, ciphertext: &[u8]) -> anyhow::Result<String> {
         let mut context = Context::from_protocol(self.protocol)?;
         let mut input = Data::from_bytes(ciphertext)?;
@@ -30,13 +34,12 @@ impl Gpg {
 
 #[cfg(test)]
 mod test {
-    use crate::{validate, Args, Gpg};
+    use crate::Gpg;
     use std::{
         env,
         io::Write,
         process::{Command, Stdio},
     };
-    use tempfile::NamedTempFile;
 
     fn import_keys() {
         let public = include_bytes!("../tests/resources/public.key");
@@ -61,29 +64,6 @@ mod test {
         child.stdin.as_mut().unwrap().write_all(key).unwrap();
         assert!(child.wait().unwrap().success());
     }
-
-    #[test]
-    fn should_fail_if_file_does_not_exist() {
-        let path = "test";
-        let args = Args { path: path.into() };
-        let result = validate(&args);
-        assert!(result.is_err(), "expected error, got {:#?}", result);
-        assert_eq!(
-            format!("{}", result.err().unwrap()),
-            format!(r#"The path "{}" does not exist!"#, path)
-        );
-    }
-
-    #[test]
-    fn should_succeed_if_file_exists() {
-        let path = NamedTempFile::new().expect("temp file");
-        let args = Args {
-            path: path.path().into(),
-        };
-        let result = validate(&args);
-        assert!(result.is_ok(), "expected error, got {:#?}", result);
-    }
-
     #[test]
     fn encrypt_and_decrypt_should_be_isomorphic() {
         import_keys();

@@ -5,35 +5,33 @@ use gpg::Gpg;
 use std::{
     fs::File,
     io::{BufReader, Read},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 #[derive(Parser, Debug)]
 pub struct Args {
-    #[clap(short, long)]
-    path: PathBuf,
+    #[clap(subcommand)]
+    action: Action,
+}
+
+#[derive(clap::Subcommand, Debug)]
+pub enum Action {
+    /// Insert a value at the given key.
+    Insert { key: String },
 }
 
 fn main() -> anyhow::Result<()> {
-    let args = Args::parse();
-    validate(&args)?;
-    let gpg = Gpg::new();
-    let mut reader = BufReader::new(File::open(args.path)?);
-    let mut buffer = Vec::new();
-    reader.read_to_end(&mut buffer)?;
-    let plaintext = gpg.decrypt(&buffer)?;
-    println!("{}", plaintext);
+    initialize(&Args::parse())
+}
+
+pub fn initialize(args: &Args) -> anyhow::Result<()> {
+    match &args.action {
+        _ => println!("nada"),
+    };
     Ok(())
 }
 
-pub fn validate(args: &Args) -> anyhow::Result<()> {
-    if !args.path.exists() {
-        // TODO paths are not utf8, we should deal with that here explicitly
-        // either fail, or handle them correctly
-        return Err(anyhow!(
-            r#"The path "{}" does not exist!"#,
-            args.path.to_str().unwrap()
-        ));
-    }
-    Ok(())
+#[cfg(test)]
+mod test {
+    use crate::{initialize, Args};
 }
