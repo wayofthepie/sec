@@ -32,14 +32,21 @@ impl Gpg {
     }
 }
 
+impl Default for Gpg {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 pub mod test {
-    use crate::Gpg;
     use std::{
         env,
         io::Write,
         process::{Command, Stdio},
     };
+
+    use crate::gpg::Gpg;
 
     pub const GPG_KEY_ID: &str = "passrs-tests@nocht.io";
 
