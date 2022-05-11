@@ -33,7 +33,7 @@ impl Gpg {
 }
 
 #[cfg(test)]
-mod test {
+pub mod test {
     use crate::Gpg;
     use std::{
         env,
@@ -41,14 +41,16 @@ mod test {
         process::{Command, Stdio},
     };
 
-    fn import_keys() {
+    pub const GPG_KEY_ID: &str = "passrs-tests@nocht.io";
+
+    pub fn import_keys() {
         let public = include_bytes!("../tests/resources/public.key");
         let secret = include_bytes!("../tests/resources/secret.key");
         import_key(public);
         import_key(secret);
     }
 
-    fn import_key(key: &[u8]) {
+    pub fn import_key(key: &[u8]) {
         let gpg = env::var_os("GPG").unwrap_or_else(|| "gpg".into());
         let mut child = Command::new(&gpg)
             .arg("--no-permission-warning")
@@ -64,13 +66,14 @@ mod test {
         child.stdin.as_mut().unwrap().write_all(key).unwrap();
         assert!(child.wait().unwrap().success());
     }
+
     #[test]
     fn encrypt_and_decrypt_should_be_isomorphic() {
         import_keys();
         let expected = "test";
         let gpg = Gpg::new();
         let ciphertext = gpg
-            .encrypt("passrs-tests@nocht.io", expected.as_bytes())
+            .encrypt(GPG_KEY_ID, expected.as_bytes())
             .expect("ciphertext encryption error");
         let plaintext = gpg.decrypt(&ciphertext).expect("plaintext");
         assert_eq!(plaintext, expected);
