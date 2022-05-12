@@ -32,7 +32,9 @@ jobs:
           gpg --list-keys
           echo "test" > test
           gpg --encrypt --recipient passrs-tests@nocht.io test
-          gpg --decrypt test.gpg
+          echo "encrypted..."
+          gpg --decrypt --batch test.gpg
+          echo "decrypted..."
       - run: |
           cargo test
       - name: Run cargo-tarpaulin
