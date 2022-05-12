@@ -1,3 +1,4 @@
+[![codecov](https://codecov.io/gh/wayofthepie/sec/branch/main/graph/badge.svg?token=TAVF5SW2KM)](https://codecov.io/gh/wayofthepie/sec)
 # sec
 Simple secret manager wrapping GPG.
 
