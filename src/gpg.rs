@@ -42,7 +42,7 @@ impl Default for Gpg {
 pub mod test {
     use std::{
         env,
-        io::Write,
+        io::{stdout, Write},
         process::{Command, Stdio},
     };
 
@@ -56,6 +56,11 @@ pub mod test {
         import_key(public);
         import_key(secret);
     }
+
+    const OWNERTRUST_PATH: &str = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/resources/ownertrust-gpg.txt"
+    );
 
     pub fn import_key(key: &[u8]) {
         let gpg = env::var_os("GPG").unwrap_or_else(|| "gpg".into());
@@ -71,6 +76,13 @@ pub mod test {
             .spawn()
             .unwrap();
         child.stdin.as_mut().unwrap().write_all(key).unwrap();
+        assert!(child.wait().unwrap().success());
+        // The key is imported, now we need to trust it.
+        let mut child = Command::new(&gpg)
+            .arg("--import-ownertrust")
+            .arg(OWNERTRUST_PATH)
+            .spawn()
+            .unwrap();
         assert!(child.wait().unwrap().success());
     }
 
