@@ -34,12 +34,22 @@ impl<R: Read, P: Persister> Handler<R, P> {
     }
 
     pub fn insert(&mut self, name: &str, key_id: &str) -> anyhow::Result<HandlerResult> {
+        let buf = &self.read_in_value()?;
+        let ciphertext = self.gpg.encrypt(key_id, buf)?;
+        let file = self.write_out_value(name, &ciphertext)?;
+        Ok(HandlerResult::Insert(file))
+    }
+
+    fn read_in_value(&mut self) -> anyhow::Result<Vec<u8>> {
         let mut buf = Vec::new();
         self.reader.read_to_end(&mut buf)?;
-        let ciphertext = self.gpg.encrypt(key_id, &buf)?;
+        Ok(buf)
+    }
+
+    fn write_out_value(&self, name: &str, ciphertext: &[u8]) -> anyhow::Result<File> {
         let mut file = self.persister.create(name)?;
-        file.write_all(&ciphertext)?;
-        Ok(HandlerResult::Insert(file))
+        file.write_all(ciphertext)?;
+        Ok(file)
     }
 }
 
