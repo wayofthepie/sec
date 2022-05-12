@@ -31,7 +31,7 @@ jobs:
           gpg --list-secret-keys
           gpg --list-keys
           echo "test" > test
-          gpg --encrypt --recipient passrs-tests@nocht.io test
+          gpg --encrypt --batch --recipient passrs-tests@nocht.io test
           echo "encrypted..."
           gpg --decrypt --batch test.gpg
           echo "decrypted..."
