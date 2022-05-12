@@ -30,6 +30,9 @@ jobs:
           gpg --import tests/resources/*
           gpg --list-secret-keys
           gpg --list-keys
+          echo "test" > test
+          gpg --encrypt --recipient passrs-tests@nocht.io test
+          gpg --decrypt test.gpg
       - run: |
           cargo test
       - name: Run cargo-tarpaulin
