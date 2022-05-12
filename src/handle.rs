@@ -10,7 +10,7 @@ pub fn handle<R: Read, P: Persister>(
     args: &Args,
 ) -> anyhow::Result<HandlerResult> {
     match &args.action {
-        Action::Insert { key } => handler.insert(key),
+        Action::Insert { name: key, key_id } => handler.insert(key, key_id),
     }
 }
 
@@ -19,27 +19,25 @@ pub enum HandlerResult {
 }
 
 pub struct Handler<R, P> {
-    key_id: String,
     gpg: Gpg,
     persister: P,
     reader: R,
 }
 
 impl<R: Read, P: Persister> Handler<R, P> {
-    pub fn new(key_id: String, persister: P, reader: R) -> Self {
+    pub fn new(persister: P, reader: R) -> Self {
         Self {
-            key_id,
             gpg: Gpg::default(),
             persister,
             reader,
         }
     }
 
-    pub fn insert(&mut self, key: &str) -> anyhow::Result<HandlerResult> {
+    pub fn insert(&mut self, name: &str, key_id: &str) -> anyhow::Result<HandlerResult> {
         let mut buf = Vec::new();
         self.reader.read_to_end(&mut buf)?;
-        let ciphertext = self.gpg.encrypt(&self.key_id, &buf)?;
-        let mut file = self.persister.create(key)?;
+        let ciphertext = self.gpg.encrypt(key_id, &buf)?;
+        let mut file = self.persister.create(name)?;
         file.write_all(&ciphertext)?;
         Ok(HandlerResult::Insert(file))
     }
@@ -70,6 +68,7 @@ impl Persister for OnDiskPersister {
 
 #[cfg(test)]
 mod test {
+    use super::Persister;
     use crate::{
         cli::Action,
         gpg::{
@@ -86,8 +85,6 @@ mod test {
         path::Path,
     };
     use tempfile::tempdir;
-
-    use super::Persister;
 
     struct InMemoryPersister;
 
@@ -111,13 +108,16 @@ mod test {
     fn should_encrypt_and_write_the_given_value() {
         import_keys();
         let gpg = Gpg::new();
-        let key = "key".to_owned();
+        let name = "name".to_owned();
         let args = Args {
-            action: Action::Insert { key },
+            action: Action::Insert {
+                name,
+                key_id: GPG_KEY_ID.to_owned(),
+            },
         };
         let mut buf = Vec::new();
         let input = "value";
-        let handler = Handler::new(GPG_KEY_ID.to_owned(), InMemoryPersister, input.as_bytes());
+        let handler = Handler::new(InMemoryPersister, input.as_bytes());
         let HandlerResult::Insert(mut file) = handle(handler, &args).expect("expected a result");
         file.seek(SeekFrom::Start(0)).unwrap();
         file.read_to_end(&mut buf).unwrap();

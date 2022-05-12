@@ -9,5 +9,5 @@ pub struct Args {
 #[derive(clap::Subcommand, Debug)]
 pub enum Action {
     /// Insert a value at the given key.
-    Insert { key: String },
+    Insert { name: String, key_id: String },
 }

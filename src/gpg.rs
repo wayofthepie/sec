@@ -42,7 +42,7 @@ impl Default for Gpg {
 pub mod test {
     use std::{
         env,
-        io::{stdout, Write},
+        io::Write,
         process::{Command, Stdio},
     };
 

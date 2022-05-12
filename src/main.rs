@@ -9,8 +9,7 @@ use handle::OnDiskPersister;
 use handle::{Handler, HandlerResult};
 
 fn main() -> anyhow::Result<()> {
-    let input = b"test";
-    let handler = Handler::new("".to_owned(), OnDiskPersister::new(), &input[..]);
+    let handler = Handler::new(OnDiskPersister::new(), std::io::stdin());
     match handle(handler, &Args::parse())? {
         HandlerResult::Insert(_) => println!("Success"),
     }
