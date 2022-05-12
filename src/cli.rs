@@ -9,8 +9,18 @@ pub struct Args {
 #[derive(clap::Subcommand, Debug)]
 pub enum Action {
     /// Insert a value of the given name.
-    Insert { name: String, key_id: String },
+    Insert {
+        /// The name of the entry - this is a file path, a file will be created at the given
+        /// path
+        name: String,
+        /// The key id for the key used to encrypt this entry
+        key_id: String,
+    },
 
     /// Retrieve the value of the given name.
-    Retrieve { name: String },
+    Retrieve {
+        /// The name of the secret to retrieve. Like insert, this should be a file path to an
+        /// existing entry.
+        name: String,
+    },
 }
