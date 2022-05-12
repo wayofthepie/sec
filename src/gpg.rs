@@ -1,4 +1,8 @@
+use std::ops::DerefMut;
+
 use gpgme::{Context, Data, Protocol};
+
+use crate::secrets::{ZeroizedByteVec, ZeroizedString};
 
 /// Wrapper for GPG functionality.
 pub struct Gpg {
@@ -23,12 +27,12 @@ impl Gpg {
     }
 
     /// Decrypt the given ciphertext.
-    pub fn decrypt(&self, ciphertext: &[u8]) -> anyhow::Result<String> {
+    pub fn decrypt(&self, ciphertext: &[u8]) -> anyhow::Result<ZeroizedString> {
         let mut context = Context::from_protocol(self.protocol)?;
         let mut input = Data::from_bytes(ciphertext)?;
-        let mut output = Vec::new();
-        context.decrypt(&mut input, &mut output)?;
-        Ok(std::str::from_utf8(&output)?.to_owned())
+        let mut output = ZeroizedByteVec::new(Vec::new());
+        context.decrypt(&mut input, output.deref_mut())?;
+        Ok(output.into_zeroized_string())
     }
 }
 
@@ -40,13 +44,12 @@ impl Default for Gpg {
 
 #[cfg(test)]
 pub mod test {
+    use crate::gpg::Gpg;
     use std::{
         env,
         io::Write,
         process::{Command, Stdio},
     };
-
-    use crate::gpg::Gpg;
 
     pub const GPG_KEY_ID: &str = "passrs-tests@nocht.io";
 
@@ -95,6 +98,6 @@ pub mod test {
             .encrypt(GPG_KEY_ID, expected.as_bytes())
             .expect("ciphertext encryption error");
         let plaintext = gpg.decrypt(&ciphertext).expect("plaintext");
-        assert_eq!(plaintext, expected);
+        assert_eq!(plaintext.as_ref(), expected);
     }
 }

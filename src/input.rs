@@ -65,11 +65,10 @@ impl<R: SecretReader, P: Persister> Handler<R, P> {
         let mut reader = BufReader::new(file);
         let mut buf = Vec::new();
         reader.read_to_end(&mut buf)?;
-        let plaintext = ZeroizedString::new(
-            self.gpg
-                .decrypt(&buf)
-                .with_context(|| format!(r#"The entry "{name}" could not be decrypted!"#))?,
-        );
+        let plaintext = self
+            .gpg
+            .decrypt(&buf)
+            .with_context(|| format!(r#"The entry "{name}" could not be decrypted!"#))?;
         Ok(HandlerResult::Retrieve(plaintext))
     }
 }
@@ -177,7 +176,7 @@ mod test {
             file.seek(SeekFrom::Start(0)).unwrap();
             file.read_to_end(&mut buf).unwrap();
             let plaintext = gpg.decrypt(&buf).unwrap();
-            assert_eq!(plaintext, input.trim());
+            assert_eq!(plaintext.as_ref(), input.trim());
         } else {
             panic!("got unexpected handle result")
         }
