@@ -27,16 +27,6 @@ jobs:
       - uses: Swatinem/rust-cache@v1
       - run: |
           sudo apt install libgpg-error-dev libgpgme-dev gpg
-          gpg --import tests/resources/*
-          gpg --list-secret-keys
-          gpg --list-keys
-          echo "test" > test
-          gpg --encrypt --batch --recipient passrs-tests@nocht.io test
-          echo "encrypted..."
-          gpg --decrypt --batch test.gpg
-          echo "decrypted..."
-      - run: |
-          cargo test
       - name: Run cargo-tarpaulin
         uses: actions-rs/tarpaulin@v0.1
         with:
