@@ -2,18 +2,22 @@ use anyhow::Context;
 use zeroize::ZeroizeOnDrop;
 
 /// [`String`] whose memory is zeroed out when dropped.
-#[derive(ZeroizeOnDrop)]
-pub struct ZeroizedString {
-    inner: String,
-}
+#[derive(Clone, ZeroizeOnDrop)]
+pub struct ZeroizedString(String);
 
 impl ZeroizedString {
     pub fn new(inner: String) -> Self {
-        Self { inner }
+        Self(inner)
     }
 
     pub fn into_bytes(self) -> ZeroizedByteVec {
-        ZeroizedByteVec::new(self.inner.clone().into_bytes())
+        ZeroizedByteVec::new(self.0.clone().into_bytes())
+    }
+}
+
+impl AsRef<str> for ZeroizedString {
+    fn as_ref(&self) -> &str {
+        self.0.as_ref()
     }
 }
 

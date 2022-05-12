@@ -7,7 +7,7 @@ pub fn write_result<W: Write>(
 ) -> anyhow::Result<()> {
     match result {
         HandlerResult::Insert(_) => output.write("Secret saved."),
-        HandlerResult::Retrieve(value) => output.write(&value),
+        HandlerResult::Retrieve(value) => output.write(value.as_ref()),
     }
 }
 
@@ -30,6 +30,7 @@ mod test {
     use crate::{
         input::HandlerResult,
         output::{write_result, TerminalOutput},
+        secrets::ZeroizedString,
     };
     use memfile::{CreateOptions, MemFile};
 
@@ -48,12 +49,12 @@ mod test {
 
     #[test]
     fn result_of_retrieve_should_write_value() {
-        let value = "value".to_owned();
+        let value = ZeroizedString::new("value".to_owned());
         let mut buf = Vec::new();
         let output = TerminalOutput::new(&mut buf);
         let result = HandlerResult::Retrieve(value.clone());
         write_result(result, output).unwrap();
         let message = std::str::from_utf8(&buf).unwrap();
-        assert_eq!(message, value);
+        assert_eq!(message, value.as_ref());
     }
 }

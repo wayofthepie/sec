@@ -1,6 +1,6 @@
 use crate::cli::{Action, Args};
 use crate::gpg::Gpg;
-use crate::secrets::{SecretReader, ZeroizedByteVec};
+use crate::secrets::{SecretReader, ZeroizedByteVec, ZeroizedString};
 use anyhow::Context;
 use std::io::{BufReader, Read};
 use std::{
@@ -20,7 +20,7 @@ pub fn handle<R: SecretReader, P: Persister>(
 
 pub enum HandlerResult {
     Insert(File),
-    Retrieve(String),
+    Retrieve(ZeroizedString),
 }
 
 pub struct Handler<R, P> {
@@ -65,10 +65,11 @@ impl<R: SecretReader, P: Persister> Handler<R, P> {
         let mut reader = BufReader::new(file);
         let mut buf = Vec::new();
         reader.read_to_end(&mut buf)?;
-        let plaintext = self
-            .gpg
-            .decrypt(&buf)
-            .with_context(|| format!(r#"The entry "{name}" could not be decrypted!"#))?;
+        let plaintext = ZeroizedString::new(
+            self.gpg
+                .decrypt(&buf)
+                .with_context(|| format!(r#"The entry "{name}" could not be decrypted!"#))?,
+        );
         Ok(HandlerResult::Retrieve(plaintext))
     }
 }
@@ -200,7 +201,7 @@ mod test {
         if let HandlerResult::Retrieve(value) =
             handle(&mut handler, &retrieve_args).expect("expected a result")
         {
-            assert_eq!(value, input.trim());
+            assert_eq!(value.as_ref(), input.trim());
             return;
         }
         panic!("got unexpected handle result");
