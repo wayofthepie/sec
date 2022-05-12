@@ -1,0 +1,54 @@
+use anyhow::Context;
+use zeroize::ZeroizeOnDrop;
+
+/// [`String`] whose memory is zeroed out when dropped.
+#[derive(ZeroizeOnDrop)]
+pub struct ZeroizedString {
+    inner: String,
+}
+
+impl ZeroizedString {
+    pub fn new(inner: String) -> Self {
+        Self { inner }
+    }
+
+    pub fn into_bytes(self) -> ZeroizedByteVec {
+        ZeroizedByteVec::new(self.inner.clone().into_bytes())
+    }
+}
+
+/// [`Vec<u8>`] whose memory is zeroed out when dropped.
+#[derive(ZeroizeOnDrop)]
+pub struct ZeroizedByteVec {
+    inner: Vec<u8>,
+}
+
+impl ZeroizedByteVec {
+    pub fn new(inner: Vec<u8>) -> Self {
+        Self { inner }
+    }
+}
+
+impl AsRef<[u8]> for ZeroizedByteVec {
+    fn as_ref(&self) -> &[u8] {
+        self.inner.as_ref()
+    }
+}
+
+/// Read a secret into a [`ZeroizedByteVec`].
+pub trait SecretReader {
+    fn read_secret(&self) -> anyhow::Result<ZeroizedByteVec>;
+}
+
+pub struct StdinSecretReader;
+
+impl SecretReader for StdinSecretReader {
+    /// Read from stdin without echoing back the characeters.
+    fn read_secret(&self) -> anyhow::Result<ZeroizedByteVec> {
+        let secret = ZeroizedString::new(
+            rpassword::prompt_password("Enter your secret: ")
+                .with_context(|| "failed to read from input source")?,
+        );
+        Ok(secret.into_bytes())
+    }
+}

@@ -2,13 +2,14 @@ pub mod cli;
 pub mod gpg;
 pub mod input;
 mod output;
-
-use std::io;
+pub mod secrets;
 
 use clap::Parser;
 use cli::Args;
-use input::{handle, Handler, OnDiskPersister, StdinSecretReader};
+use input::{handle, Handler, OnDiskPersister};
 use output::{write_result, TerminalOutput};
+use secrets::StdinSecretReader;
+use std::io;
 
 fn main() -> anyhow::Result<()> {
     let output = TerminalOutput::new(io::stdout());

@@ -1,5 +1,6 @@
 use crate::cli::{Action, Args};
 use crate::gpg::Gpg;
+use crate::secrets::{SecretReader, ZeroizedByteVec};
 use anyhow::Context;
 use std::io::{BufReader, Read};
 use std::{
@@ -42,12 +43,12 @@ impl<R: SecretReader, P: Persister> Handler<R, P> {
     /// the [`Gpg::encrypt`] call.
     pub fn insert(&mut self, name: &str, key_id: &str) -> anyhow::Result<HandlerResult> {
         let buf = &self.read_in_secret_value()?;
-        let ciphertext = self.gpg.encrypt(key_id, buf)?;
+        let ciphertext = self.gpg.encrypt(key_id, buf.as_ref())?;
         let file = self.write_out_value(name, &ciphertext)?;
         Ok(HandlerResult::Insert(file))
     }
 
-    fn read_in_secret_value(&mut self) -> anyhow::Result<Vec<u8>> {
+    fn read_in_secret_value(&mut self) -> anyhow::Result<ZeroizedByteVec> {
         self.reader.read_secret()
     }
 
@@ -57,6 +58,7 @@ impl<R: SecretReader, P: Persister> Handler<R, P> {
         Ok(file)
     }
 
+    /// Retrieve a secret from the entry with the value of `name`.
     pub fn retrieve(&self, name: &str) -> anyhow::Result<HandlerResult> {
         let file =
             File::open(name).with_context(|| format!(r#"The entry "{name}" does not exist!"#))?;
@@ -68,20 +70,6 @@ impl<R: SecretReader, P: Persister> Handler<R, P> {
             .decrypt(&buf)
             .with_context(|| format!(r#"The entry "{name}" could not be decrypted!"#))?;
         Ok(HandlerResult::Retrieve(plaintext))
-    }
-}
-
-pub trait SecretReader {
-    fn read_secret(&self) -> anyhow::Result<Vec<u8>>;
-}
-
-pub struct StdinSecretReader;
-
-impl SecretReader for StdinSecretReader {
-    fn read_secret(&self) -> anyhow::Result<Vec<u8>> {
-        let secret = rpassword::prompt_password("Enter your secret: ")
-            .with_context(|| "failed to read from input source")?;
-        Ok(secret.into_bytes())
     }
 }
 
@@ -115,7 +103,7 @@ impl Persister for OnDiskPersister {
 
 #[cfg(test)]
 mod test {
-    use super::{HandlerResult, Persister, SecretReader};
+    use super::{HandlerResult, Persister};
     use crate::{
         cli::Action,
         gpg::{
@@ -123,6 +111,7 @@ mod test {
             Gpg,
         },
         input::{handle, OnDiskPersister},
+        secrets::{SecretReader, ZeroizedByteVec},
         Args, Handler,
     };
     use memfile::CreateOptions;
@@ -139,8 +128,10 @@ mod test {
     }
 
     impl<'a> SecretReader for FakeSecretReader<'a> {
-        fn read_secret(&self) -> anyhow::Result<Vec<u8>> {
-            Ok(rpassword::read_password_from_bufread(&mut self.secret.take())?.into_bytes())
+        fn read_secret(&self) -> anyhow::Result<ZeroizedByteVec> {
+            Ok(ZeroizedByteVec::new(
+                rpassword::read_password_from_bufread(&mut self.secret.take())?.into_bytes(),
+            ))
         }
     }
 
