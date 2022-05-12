@@ -10,9 +10,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      - run: |
+          sudo apt install libgpg-error-dev libgpgme-dev
       - uses: Swatinem/rust-cache@v1
       - run: |
-          apt install libgpg-error-dev libgpgme-dev
           cargo build
   test:
     strategy:
@@ -24,6 +25,8 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: Swatinem/rust-cache@v1
+      - run: |
+          sudo apt install libgpg-error-dev libgpgme-dev
       - name: Run cargo-tarpaulin
         uses: actions-rs/tarpaulin@v0.1
         with:
@@ -42,6 +45,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      - run: |
+          sudo apt install libgpg-error-dev libgpgme-dev
       - uses: Swatinem/rust-cache@v1
       - run: |
           cargo clippy
