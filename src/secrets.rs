@@ -11,10 +11,6 @@ impl ZeroizedString {
     pub fn new(inner: String) -> Self {
         Self(inner)
     }
-
-    pub fn into_bytes(self) -> ZeroizedByteVec {
-        ZeroizedByteVec::new(self.0.clone().into_bytes())
-    }
 }
 
 impl AsRef<str> for ZeroizedString {
@@ -71,10 +67,10 @@ pub struct StdinSecretReader;
 impl SecretReader for StdinSecretReader {
     /// Read from stdin without echoing back the characeters.
     fn read_secret(&self) -> anyhow::Result<ZeroizedByteVec> {
-        let secret = ZeroizedString::new(
+        Ok(ZeroizedByteVec::new(
             rpassword::prompt_password("Enter your secret: ")
-                .with_context(|| "failed to read from input source")?,
-        );
-        Ok(secret.into_bytes())
+                .with_context(|| "failed to read from input source")?
+                .into_bytes(),
+        ))
     }
 }
