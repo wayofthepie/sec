@@ -176,7 +176,7 @@ mod test {
             file.seek(SeekFrom::Start(0)).unwrap();
             file.read_to_end(&mut buf).unwrap();
             let plaintext = gpg.decrypt(&buf).unwrap();
-            assert_eq!(plaintext.as_ref(), input.trim());
+            assert_eq!(&*plaintext, input.trim());
         } else {
             panic!("got unexpected handle result")
         }
@@ -200,7 +200,7 @@ mod test {
         if let HandlerResult::Retrieve(value) =
             handle(&mut handler, &retrieve_args).expect("expected a result")
         {
-            assert_eq!(value.as_ref(), input.trim());
+            assert_eq!(&*value, input.trim());
             return;
         }
         panic!("got unexpected handle result");

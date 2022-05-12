@@ -55,6 +55,6 @@ mod test {
         let result = HandlerResult::Retrieve(value.clone());
         write_result(result, output).unwrap();
         let message = std::str::from_utf8(&buf).unwrap();
-        assert_eq!(message, value.as_ref());
+        assert_eq!(message, &*value);
     }
 }

@@ -1,8 +1,5 @@
-use std::ops::DerefMut;
-
-use gpgme::{Context, Data, Protocol};
-
 use crate::secrets::{ZeroizedByteVec, ZeroizedString};
+use gpgme::{Context, Data, Protocol};
 
 /// Wrapper for GPG functionality.
 pub struct Gpg {
@@ -31,7 +28,7 @@ impl Gpg {
         let mut context = Context::from_protocol(self.protocol)?;
         let mut input = Data::from_bytes(ciphertext)?;
         let mut output = ZeroizedByteVec::new(Vec::new());
-        context.decrypt(&mut input, output.deref_mut())?;
+        context.decrypt(&mut input, &mut *output)?;
         Ok(output.into_zeroized_string())
     }
 }
@@ -98,6 +95,6 @@ pub mod test {
             .encrypt(GPG_KEY_ID, expected.as_bytes())
             .expect("ciphertext encryption error");
         let plaintext = gpg.decrypt(&ciphertext).expect("plaintext");
-        assert_eq!(plaintext.as_ref(), expected);
+        assert_eq!(&*plaintext, expected);
     }
 }

@@ -13,8 +13,10 @@ impl ZeroizedString {
     }
 }
 
-impl AsRef<str> for ZeroizedString {
-    fn as_ref(&self) -> &str {
+impl Deref for ZeroizedString {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
         self.0.as_ref()
     }
 }
