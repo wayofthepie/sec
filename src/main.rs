@@ -3,6 +3,7 @@ pub mod gpg;
 pub mod input;
 mod output;
 pub mod secrets;
+pub mod store;
 
 use clap::Parser;
 use cli::Args;
