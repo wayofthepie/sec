@@ -1,13 +1,21 @@
-use anyhow::anyhow;
 use std::{
     fs::{File, OpenOptions},
     io::{BufWriter, Read, Write},
     path::Path,
 };
+use thiserror::Error;
 
-trait Store {
-    fn insert<S: AsRef<str>>(&self, name: S, value: &[u8]) -> anyhow::Result<()>;
-    fn get<S: AsRef<str>>(&self, name: S) -> anyhow::Result<Vec<u8>>;
+#[derive(Error, Debug)]
+pub enum StoreError {
+    #[error(r#"The entry "{0}" does not exist!"#)]
+    EntryDoesNotExist(String),
+    #[error("Encountered IO error when interacting with the filesystem:\n{0}")]
+    IoError(#[from] std::io::Error),
+}
+
+pub trait Store {
+    fn insert<S: AsRef<str>>(&self, name: S, value: &[u8]) -> Result<(), StoreError>;
+    fn get<S: AsRef<str>>(&self, name: S) -> Result<Vec<u8>, StoreError>;
 }
 
 pub struct OnDiskStore {
@@ -27,7 +35,7 @@ impl OnDiskStore {
 }
 
 impl Store for OnDiskStore {
-    fn insert<S: AsRef<str>>(&self, name: S, value: &[u8]) -> anyhow::Result<()> {
+    fn insert<S: AsRef<str>>(&self, name: S, value: &[u8]) -> Result<(), StoreError> {
         let file = OpenOptions::new()
             .create(true)
             .write(true)
@@ -36,15 +44,14 @@ impl Store for OnDiskStore {
         writer.write_all(value).map_err(|e| e.into())
     }
 
-    fn get<S: AsRef<str>>(&self, name: S) -> anyhow::Result<Vec<u8>> {
+    fn get<S: AsRef<str>>(&self, name: S) -> Result<Vec<u8>, StoreError> {
         let name = name.as_ref();
         let path = self.build_entry_path(name);
         if !Path::new(&path).exists() {
-            return Err(anyhow!(r#"The entry "{name}" does not exist!"#));
+            return Err(StoreError::EntryDoesNotExist(name.to_owned()));
         }
-        let mut file = File::open(path)?;
         let mut buf = Vec::new();
-        file.read_to_end(&mut buf)?;
+        File::open(path)?.read_to_end(&mut buf)?;
         Ok(buf)
     }
 }

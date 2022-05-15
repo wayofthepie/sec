@@ -32,16 +32,12 @@ mod test {
         output::{write_result, TerminalOutput},
         secrets::ZeroizedString,
     };
-    use memfile::{CreateOptions, MemFile};
 
     #[test]
     fn result_of_insert_should_write_success_if_secret_saved() {
         let mut buf = Vec::new();
         let output = TerminalOutput::new(&mut buf);
-        let file = MemFile::create("test", CreateOptions::default())
-            .unwrap()
-            .into_file();
-        let result = HandlerResult::Insert(file);
+        let result = HandlerResult::Insert("".to_owned());
         write_result(result, output).unwrap();
         let message = std::str::from_utf8(&buf).unwrap();
         assert_eq!(message, "Secret saved.");

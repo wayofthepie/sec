@@ -1,15 +1,11 @@
 use crate::cli::{Action, Args};
 use crate::gpg::Gpg;
 use crate::secrets::{SecretReader, ZeroizedByteVec, ZeroizedString};
+use crate::store::Store;
 use anyhow::Context;
-use std::io::{BufReader, Read};
-use std::{
-    fs::{File, OpenOptions},
-    io::Write,
-};
 
-pub fn handle<R: SecretReader, P: Persister>(
-    handler: &mut Handler<R, P>,
+pub fn handle<R: SecretReader, S: Store>(
+    handler: &mut Handler<R, S>,
     args: &Args,
 ) -> anyhow::Result<HandlerResult> {
     match &args.action {
@@ -19,21 +15,21 @@ pub fn handle<R: SecretReader, P: Persister>(
 }
 
 pub enum HandlerResult {
-    Insert(File),
+    Insert(String),
     Retrieve(ZeroizedString),
 }
 
-pub struct Handler<R, P> {
+pub struct Handler<R, S> {
     gpg: Gpg,
-    persister: P,
+    store: S,
     reader: R,
 }
 
-impl<R: SecretReader, P: Persister> Handler<R, P> {
-    pub fn new(persister: P, reader: R) -> Self {
+impl<R: SecretReader, S: Store> Handler<R, S> {
+    pub fn new(store: S, reader: R) -> Self {
         Self {
             gpg: Gpg::default(),
-            persister,
+            store,
             reader,
         }
     }
@@ -44,84 +40,93 @@ impl<R: SecretReader, P: Persister> Handler<R, P> {
     pub fn insert(&mut self, name: &str, key_id: &str) -> anyhow::Result<HandlerResult> {
         let buf = &self.read_in_secret_value()?;
         let ciphertext = self.gpg.encrypt(key_id, buf.as_ref())?;
-        let file = self.write_out_value(name, &ciphertext)?;
-        Ok(HandlerResult::Insert(file))
+        self.write_out_value(name, &ciphertext)?;
+        Ok(HandlerResult::Insert(name.to_owned()))
     }
 
     fn read_in_secret_value(&mut self) -> anyhow::Result<ZeroizedByteVec> {
         self.reader.read_secret()
     }
 
-    fn write_out_value(&self, name: &str, ciphertext: &[u8]) -> anyhow::Result<File> {
-        let mut file = self.persister.create(name)?;
-        file.write_all(ciphertext)?;
-        Ok(file)
+    fn write_out_value(&self, name: &str, ciphertext: &[u8]) -> anyhow::Result<()> {
+        self.store.insert(name, ciphertext).with_context(|| {
+            format!("An error occurred when attempting to insert the entry `{name}`:")
+        })
     }
 
     /// Retrieve a secret from the entry with the value of `name`.
     pub fn retrieve(&self, name: &str) -> anyhow::Result<HandlerResult> {
-        let file =
-            File::open(name).with_context(|| format!(r#"The entry "{name}" does not exist!"#))?;
-        let mut reader = BufReader::new(file);
-        let mut buf = Vec::new();
-        reader.read_to_end(&mut buf)?;
+        let value = self.store.get(name).with_context(|| {
+            format!("An error occurred when attempting to retrieve the entry `{name}`:")
+        })?;
         let plaintext = self
             .gpg
-            .decrypt(&buf)
+            .decrypt(&value)
             .with_context(|| format!(r#"The entry "{name}" could not be decrypted!"#))?;
         Ok(HandlerResult::Retrieve(plaintext))
     }
 }
 
-pub trait Persister {
-    fn create(&self, name: &str) -> anyhow::Result<File>;
-}
-
-pub struct OnDiskPersister;
-
-impl OnDiskPersister {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Default for OnDiskPersister {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Persister for OnDiskPersister {
-    fn create(&self, name: &str) -> anyhow::Result<File> {
-        OpenOptions::new()
-            .create(true)
-            .write(true)
-            .open(name)
-            .map_err(|e| e.into())
-    }
-}
-
 #[cfg(test)]
 mod test {
-    use super::{HandlerResult, Persister};
+    use super::HandlerResult;
     use crate::{
         cli::Action,
         gpg::{
             test::{import_keys, GPG_KEY_ID},
             Gpg,
         },
-        input::{handle, OnDiskPersister},
+        input::handle,
         secrets::{SecretReader, ZeroizedByteVec},
+        store::{Store, StoreError},
         Args, Handler,
     };
-    use memfile::CreateOptions;
-    use std::{
-        cell::RefCell,
-        fs::File,
-        io::{Read, Seek, SeekFrom},
-        path::Path,
-    };
-    use tempfile::{tempdir, NamedTempFile};
+    use std::{cell::RefCell, collections::HashMap, fs::File, rc::Rc};
+
+    #[derive(Clone)]
+    struct InMemoryStore {
+        store: Rc<RefCell<HashMap<String, Vec<u8>>>>,
+    }
+
+    impl InMemoryStore {
+        fn new() -> Self {
+            Self {
+                store: Rc::new(RefCell::new(HashMap::new())),
+            }
+        }
+    }
+
+    impl Store for InMemoryStore {
+        fn insert<S: AsRef<str>>(&self, name: S, value: &[u8]) -> Result<(), StoreError> {
+            self.store
+                .clone()
+                .borrow_mut()
+                .insert(name.as_ref().to_owned(), value.to_vec());
+            Ok(())
+        }
+
+        fn get<S: AsRef<str>>(&self, name: S) -> Result<Vec<u8>, StoreError> {
+            if let Some(value) = self.store.clone().borrow().get(name.as_ref()) {
+                Ok(value.clone())
+            } else {
+                Err(StoreError::EntryDoesNotExist(name.as_ref().to_owned()))
+            }
+        }
+    }
+
+    struct IoErrorStore;
+
+    impl Store for IoErrorStore {
+        fn insert<S: AsRef<str>>(&self, _: S, _: &[u8]) -> Result<(), StoreError> {
+            let _ = File::open("b68eea40-38e3-43e8-bb61-60ec38067feb")?;
+            Ok(())
+        }
+
+        fn get<S: AsRef<str>>(&self, _: S) -> Result<Vec<u8>, StoreError> {
+            let _ = File::open("b68eea40-38e3-43e8-bb61-60ec38067feb")?;
+            Ok(Vec::new())
+        }
+    }
 
     struct FakeSecretReader<'a> {
         secret: RefCell<&'a [u8]>,
@@ -130,31 +135,15 @@ mod test {
     impl<'a> SecretReader for FakeSecretReader<'a> {
         fn read_secret(&self) -> anyhow::Result<ZeroizedByteVec> {
             Ok(ZeroizedByteVec::new(
-                rpassword::read_password_from_bufread(&mut self.secret.take())?.into_bytes(),
+                rpassword::read_password_from_bufread(&mut self.secret.take())
+                    .unwrap()
+                    .into_bytes(),
             ))
         }
     }
 
-    struct InMemoryPersister;
-
-    impl Persister for InMemoryPersister {
-        fn create(&self, name: &str) -> anyhow::Result<File> {
-            Ok(CreateOptions::new().create(name)?.into_file())
-        }
-    }
-
     #[test]
-    fn osdiskpersister_should_create_file() {
-        let tmpdir = tempdir().unwrap();
-        let dir = tmpdir.path().to_str().unwrap();
-        let path = format!("{dir}/test.file");
-        let persister = Box::new(OnDiskPersister::new());
-        persister.create(&path).unwrap();
-        assert!(Path::new(&path).exists());
-    }
-
-    #[test]
-    fn should_encrypt_and_write_the_given_value() {
+    fn should_encrypt_and_store_given_value() {
         import_keys();
         let gpg = Gpg::new();
         let name = "name".to_owned();
@@ -164,18 +153,16 @@ mod test {
                 key_id: GPG_KEY_ID.to_owned(),
             },
         };
-        let mut buf = Vec::new();
         let input = "password\n";
         let secret_reader = FakeSecretReader {
             secret: RefCell::new(input.as_bytes()),
         };
-        let mut handler = Handler::new(InMemoryPersister, secret_reader);
-        if let HandlerResult::Insert(mut file) =
-            handle(&mut handler, &args).expect("expected a result")
+        let store = InMemoryStore::new();
+        let mut handler = Handler::new(store.clone(), secret_reader);
+        if let HandlerResult::Insert(name) = handle(&mut handler, &args).expect("expected a result")
         {
-            file.seek(SeekFrom::Start(0)).unwrap();
-            file.read_to_end(&mut buf).unwrap();
-            let plaintext = gpg.decrypt(&buf).unwrap();
+            let ciphertext = store.get(name).unwrap();
+            let plaintext = gpg.decrypt(&ciphertext).unwrap();
             assert_eq!(&*plaintext, input.trim());
         } else {
             panic!("got unexpected handle result")
@@ -183,11 +170,9 @@ mod test {
     }
 
     #[test]
-    fn should_decrypt_already_encrypted_file() {
+    fn should_retrieve_entry_decrypted() {
         import_keys();
-        let tempdir = tempdir().unwrap();
-        let tempdir = tempdir.path().to_str().unwrap();
-        let name = format!("{tempdir}/name");
+        let name = "name".to_string();
         let retrieve_args = Args {
             action: Action::Retrieve { name: name.clone() },
         };
@@ -195,7 +180,8 @@ mod test {
         let secret_reader = FakeSecretReader {
             secret: RefCell::new(input.as_bytes()),
         };
-        let mut handler = Handler::new(OnDiskPersister, secret_reader);
+        let store = InMemoryStore::new();
+        let mut handler = Handler::new(store, secret_reader);
         handler.insert(&name, GPG_KEY_ID).unwrap();
         if let HandlerResult::Retrieve(value) =
             handle(&mut handler, &retrieve_args).expect("expected a result")
@@ -207,44 +193,69 @@ mod test {
     }
 
     #[test]
-    fn should_give_meaningful_error_if_entry_with_name_does_not_exist() {
-        let missing_entry = "missing_entry".to_string();
-        let value = "".to_owned();
-        let retrieve_args = Args {
-            action: Action::Retrieve {
-                name: missing_entry.clone(),
-            },
-        };
-        let secret_reader = FakeSecretReader {
-            secret: RefCell::new(value.as_bytes()),
-        };
-        let mut handler = Handler::new(OnDiskPersister, secret_reader);
-        let result = handle(&mut handler, &retrieve_args);
-        assert!(result.is_err());
-        assert_eq!(
-            result.err().unwrap().to_string(),
-            format!(r#"The entry "{missing_entry}" does not exist!"#)
-        );
-    }
-
-    #[test]
     fn should_give_meaningful_error_if_entry_could_not_be_decrypted() {
-        let file = NamedTempFile::new().unwrap();
-        let file_path = file.path().to_str().unwrap().to_string();
+        let name = "name".to_string();
         let retrieve_args = Args {
-            action: Action::Retrieve {
-                name: file_path.clone(),
-            },
+            action: Action::Retrieve { name: name.clone() },
         };
         let secret_reader = FakeSecretReader {
             secret: RefCell::new("".as_bytes()),
         };
-        let mut handler = Handler::new(OnDiskPersister, secret_reader);
+        let store = InMemoryStore::new();
+        store.insert(name.clone(), b"").unwrap();
+        let mut handler = Handler::new(store, secret_reader);
         let result = handle(&mut handler, &retrieve_args);
         assert!(result.is_err());
         assert_eq!(
             result.err().unwrap().to_string(),
-            format!(r#"The entry "{file_path}" could not be decrypted!"#)
+            format!(r#"The entry "{name}" could not be decrypted!"#)
+        );
+    }
+
+    #[test]
+    fn insert_should_give_meaningful_error_if_store_has_an_fs_error() {
+        let name = "name".to_string();
+        let retrieve_args = Args {
+            action: Action::Insert {
+                name: name.clone(),
+                key_id: GPG_KEY_ID.to_string(),
+            },
+        };
+        let secret_reader = FakeSecretReader {
+            secret: RefCell::new("secret\n".as_bytes()),
+        };
+        let store = IoErrorStore;
+        let mut handler = Handler::new(store, secret_reader);
+        let result = handle(&mut handler, &retrieve_args);
+        assert!(result.is_err());
+        let partial_error =
+            &format!("An error occurred when attempting to insert the entry `{name}`:");
+        let err = result.err().unwrap();
+        assert!(
+            err.to_string().contains(partial_error),
+            "error incorrect, got `{err}`",
+        );
+    }
+
+    #[test]
+    fn retrieve_should_give_meaningful_error_if_store_has_an_fs_error() {
+        let name = "name".to_string();
+        let retrieve_args = Args {
+            action: Action::Retrieve { name: name.clone() },
+        };
+        let secret_reader = FakeSecretReader {
+            secret: RefCell::new("".as_bytes()),
+        };
+        let store = IoErrorStore;
+        let mut handler = Handler::new(store, secret_reader);
+        let result = handle(&mut handler, &retrieve_args);
+        assert!(result.is_err());
+        let partial_error =
+            &format!("An error occurred when attempting to retrieve the entry `{name}`:");
+        let actual_error = result.err().unwrap();
+        assert!(
+            actual_error.to_string().contains(partial_error),
+            "error incorrect, got `{actual_error}`"
         );
     }
 }
