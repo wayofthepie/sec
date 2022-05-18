@@ -6,6 +6,7 @@ pub fn write_result<W: Write>(
     mut output: TerminalOutput<W>,
 ) -> anyhow::Result<()> {
     match result {
+        HandlerResult::Initialize() => output.write("Store initialized."),
         HandlerResult::Insert(_) => output.write("Secret saved."),
         HandlerResult::Retrieve(value) => output.write(value.as_ref()),
     }
@@ -52,5 +53,15 @@ mod test {
         write_result(result, output).unwrap();
         let message = std::str::from_utf8(&buf).unwrap();
         assert_eq!(message, &*value);
+    }
+
+    #[test]
+    fn result_of_initialize_should_write_message() {
+        let mut buf = Vec::new();
+        let output = TerminalOutput::new(&mut buf);
+        let result = HandlerResult::Initialize();
+        write_result(result, output).unwrap();
+        let message = std::str::from_utf8(&buf).unwrap();
+        assert_eq!(message, "Store initialized.");
     }
 }

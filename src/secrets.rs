@@ -4,7 +4,7 @@ use anyhow::Context;
 use zeroize::ZeroizeOnDrop;
 
 /// [`String`] whose memory is zeroed out when dropped.
-#[derive(Clone, ZeroizeOnDrop)]
+#[derive(Clone, PartialEq, ZeroizeOnDrop)]
 pub struct ZeroizedString(String);
 
 impl ZeroizedString {

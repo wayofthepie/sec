@@ -23,6 +23,8 @@ pub struct OnDiskStore {
 }
 
 impl OnDiskStore {
+    const GPG_FILE_POSTFIX: &'static str = ".gpg";
+
     pub fn new<S: Into<String>>(base_dir: S) -> Self {
         Self {
             base_dir: base_dir.into(),
@@ -30,7 +32,12 @@ impl OnDiskStore {
     }
 
     fn build_entry_path<S: AsRef<str>>(&self, name: S) -> String {
-        format!("{}/{}", self.base_dir, name.as_ref())
+        format!(
+            "{}/{}{}",
+            self.base_dir,
+            name.as_ref(),
+            Self::GPG_FILE_POSTFIX
+        )
     }
 }
 
@@ -70,7 +77,7 @@ mod test {
         let value = b"value";
         let store = OnDiskStore::new(base_dir);
         store.insert(name, value).unwrap();
-        assert!(PathBuf::from_str(&format!("{base_dir}/{name}"))
+        assert!(PathBuf::from_str(&format!("{base_dir}/{name}.gpg"))
             .unwrap()
             .exists());
     }
@@ -83,7 +90,7 @@ mod test {
         let value = b"value";
         let store = OnDiskStore::new(base_dir);
         store.insert(name, value).unwrap();
-        let path = &format!("{base_dir}/{name}");
+        let path = &format!("{base_dir}/{name}.gpg");
         let mut file = File::open(path).unwrap();
         let mut buf = Vec::new();
         file.read_to_end(&mut buf).unwrap();

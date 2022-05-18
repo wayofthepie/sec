@@ -8,6 +8,7 @@ pub struct Args {
 
 #[derive(clap::Subcommand, Debug)]
 pub enum Action {
+    Initialize,
     /// Insert a value of the given name.
     Insert {
         /// name of the entry
@@ -18,7 +19,8 @@ pub enum Action {
 
     /// Retrieve the value of the given name.
     Retrieve {
-        /// name of the secret to retrieve.
+        /// name of the secret to retrieve. Like insert, this should be a file path to an
+        /// existing entry.
         name: String,
     },
 }

@@ -1,36 +1,51 @@
 use crate::cli::{Action, Args};
+use crate::fs::FileSystemOperator;
 use crate::gpg::Gpg;
 use crate::secrets::{SecretReader, ZeroizedByteVec, ZeroizedString};
 use crate::store::Store;
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 
-pub fn handle<R: SecretReader, S: Store>(
-    handler: &mut Handler<R, S>,
-    args: &Args,
-) -> anyhow::Result<HandlerResult> {
+pub const PASSWORD_STORE_DIRECTORY: &str = ".password-store";
+
+pub fn handle<F, R, S>(handler: &mut Handler<F, R, S>, args: &Args) -> anyhow::Result<HandlerResult>
+where
+    R: SecretReader,
+    S: Store,
+    F: FileSystemOperator,
+{
     match &args.action {
         Action::Insert { name, key_id } => handler.insert(name, key_id),
         Action::Retrieve { name } => handler.retrieve(name),
+        Action::Initialize => handler.initialize(),
     }
 }
 
+#[derive(PartialEq)]
 pub enum HandlerResult {
     Insert(String),
     Retrieve(ZeroizedString),
+    Initialize(),
 }
 
-pub struct Handler<R, S> {
+pub struct Handler<H, R, S> {
     gpg: Gpg,
     store: S,
     reader: R,
+    fs_ops: H,
 }
 
-impl<R: SecretReader, S: Store> Handler<R, S> {
-    pub fn new(store: S, reader: R) -> Self {
+impl<F, R, S> Handler<F, R, S>
+where
+    R: SecretReader,
+    S: Store,
+    F: FileSystemOperator,
+{
+    pub fn new(store: S, reader: R, fs_ops: F) -> Self {
         Self {
             gpg: Gpg::default(),
             store,
             reader,
+            fs_ops,
         }
     }
 
@@ -65,13 +80,27 @@ impl<R: SecretReader, S: Store> Handler<R, S> {
             .with_context(|| format!(r#"The entry "{name}" could not be decrypted!"#))?;
         Ok(HandlerResult::Retrieve(plaintext))
     }
+
+    pub fn initialize(&self) -> anyhow::Result<HandlerResult> {
+        let home_dir = self
+            .fs_ops
+            .home_dir()
+            .with_context(|| "no home directory could be found...")?
+            .into_os_string()
+            .into_string()
+            .map_err(|_| anyhow!("failed to convert path to utf-8 string"))?;
+        self.fs_ops
+            .create_dir(&format!("{home_dir}/{}", PASSWORD_STORE_DIRECTORY))?;
+        Ok(HandlerResult::Initialize())
+    }
 }
 
 #[cfg(test)]
 mod test {
-    use super::HandlerResult;
+    use super::{HandlerResult, PASSWORD_STORE_DIRECTORY};
     use crate::{
         cli::Action,
+        fs::FileSystemOperator,
         gpg::{
             test::{import_keys, GPG_KEY_ID},
             Gpg,
@@ -81,7 +110,15 @@ mod test {
         store::{Store, StoreError},
         Args, Handler,
     };
-    use std::{cell::RefCell, collections::HashMap, fs::File, rc::Rc};
+    use std::{
+        cell::RefCell,
+        collections::HashMap,
+        fs::File,
+        path::{Path, PathBuf},
+        rc::Rc,
+        str::FromStr,
+    };
+    use tempfile::tempdir;
 
     #[derive(Clone)]
     struct InMemoryStore {
@@ -142,6 +179,22 @@ mod test {
         }
     }
 
+    #[derive(Default)]
+    struct FakeFsOps {
+        home: String,
+    }
+
+    impl FileSystemOperator for FakeFsOps {
+        fn home_dir(&self) -> Option<std::path::PathBuf> {
+            Some(PathBuf::from_str(&self.home).unwrap())
+        }
+
+        fn create_dir<P: AsRef<std::path::Path>>(&self, path: P) -> anyhow::Result<()> {
+            std::fs::create_dir(path.as_ref().to_str().unwrap()).unwrap();
+            Ok(())
+        }
+    }
+
     #[test]
     fn should_encrypt_and_store_given_value() {
         import_keys();
@@ -158,7 +211,7 @@ mod test {
             secret: RefCell::new(input.as_bytes()),
         };
         let store = InMemoryStore::new();
-        let mut handler = Handler::new(store.clone(), secret_reader);
+        let mut handler = Handler::new(store.clone(), secret_reader, FakeFsOps::default());
         if let HandlerResult::Insert(name) = handle(&mut handler, &args).expect("expected a result")
         {
             let ciphertext = store.get(name).unwrap();
@@ -181,7 +234,7 @@ mod test {
             secret: RefCell::new(input.as_bytes()),
         };
         let store = InMemoryStore::new();
-        let mut handler = Handler::new(store, secret_reader);
+        let mut handler = Handler::new(store, secret_reader, FakeFsOps::default());
         handler.insert(&name, GPG_KEY_ID).unwrap();
         if let HandlerResult::Retrieve(value) =
             handle(&mut handler, &retrieve_args).expect("expected a result")
@@ -203,7 +256,7 @@ mod test {
         };
         let store = InMemoryStore::new();
         store.insert(name.clone(), b"").unwrap();
-        let mut handler = Handler::new(store, secret_reader);
+        let mut handler = Handler::new(store, secret_reader, FakeFsOps::default());
         let result = handle(&mut handler, &retrieve_args);
         assert!(result.is_err());
         assert_eq!(
@@ -225,7 +278,7 @@ mod test {
             secret: RefCell::new("secret\n".as_bytes()),
         };
         let store = IoErrorStore;
-        let mut handler = Handler::new(store, secret_reader);
+        let mut handler = Handler::new(store, secret_reader, FakeFsOps::default());
         let result = handle(&mut handler, &retrieve_args);
         assert!(result.is_err());
         let partial_error =
@@ -247,7 +300,7 @@ mod test {
             secret: RefCell::new("".as_bytes()),
         };
         let store = IoErrorStore;
-        let mut handler = Handler::new(store, secret_reader);
+        let mut handler = Handler::new(store, secret_reader, FakeFsOps::default());
         let result = handle(&mut handler, &retrieve_args);
         assert!(result.is_err());
         let partial_error =
@@ -257,5 +310,29 @@ mod test {
             actual_error.to_string().contains(partial_error),
             "error incorrect, got `{actual_error}`"
         );
+    }
+
+    #[test]
+    fn initialize_should_create_password_store_directory() {
+        let tmpdir = tempdir().unwrap();
+        let tmpdir = tmpdir.path().to_str().unwrap();
+        let args = Args {
+            action: Action::Initialize,
+        };
+        let secret_reader = FakeSecretReader {
+            secret: RefCell::new("".as_bytes()),
+        };
+        let store = InMemoryStore::new();
+        let fs_ops = FakeFsOps {
+            home: tmpdir.to_string(),
+        };
+        let mut handler = Handler::new(store, secret_reader, fs_ops);
+        let result = handle(&mut handler, &args);
+        let maybe_error = result.as_ref().err();
+        assert!(result.is_ok(), "expected result, got {maybe_error:?}");
+        assert!(result.ok().unwrap() == HandlerResult::Initialize());
+        let expected_dir =
+            PathBuf::from_str(&format!("{tmpdir}/{PASSWORD_STORE_DIRECTORY}")).unwrap();
+        assert!(Path::exists(&expected_dir));
     }
 }
