@@ -17,9 +17,9 @@ impl Gpg {
     /// Encrypt the given plaintext bytes with the key indentified by the key ID.
     pub fn encrypt(&self, key_id: &str, plaintext: &[u8]) -> anyhow::Result<Vec<u8>> {
         let mut context = Context::from_protocol(self.protocol)?;
-        let key = context.find_keys(Some(key_id))?.next().unwrap().unwrap();
+        let key = context.get_key(key_id)?;
         let mut ciphertext = Vec::new();
-        context.encrypt(Some(&key), plaintext, &mut ciphertext)?;
+        context.encrypt(&[key], plaintext, &mut ciphertext)?;
         Ok(ciphertext)
     }
 
