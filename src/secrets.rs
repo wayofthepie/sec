@@ -76,3 +76,15 @@ impl SecretReader for StdinSecretReader {
         ))
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::ZeroizedByteVec;
+
+    #[test]
+    fn deref_for_zerozed_byte_vec_should_return_a_ref_to_the_inner_vec() {
+        let vec = vec![1, 2, 3];
+        let zeroized = ZeroizedByteVec::new(vec.clone());
+        assert_eq!(vec, *zeroized);
+    }
+}
