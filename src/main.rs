@@ -15,7 +15,7 @@ use store::OnDiskStore;
 
 fn main() -> anyhow::Result<()> {
     let output = TerminalOutput::new(io::stdout());
-    let mut handler = Handler::new(OnDiskStore::new("~/.sec_store"), StdinSecretReader);
+    let mut handler = Handler::new(OnDiskStore::new(""), StdinSecretReader);
     let result = handle(&mut handler, &Args::parse())?;
     write_result(result, output)
 }

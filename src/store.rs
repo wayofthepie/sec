@@ -9,7 +9,7 @@ use thiserror::Error;
 pub enum StoreError {
     #[error(r#"The entry "{0}" does not exist!"#)]
     EntryDoesNotExist(String),
-    #[error("Encountered IO error when interacting with the filesystem:\n{0}")]
+    #[error("Encountered IO error when interacting with the filesystem")]
     IoError(#[from] std::io::Error),
 }
 

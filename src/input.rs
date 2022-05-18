@@ -50,14 +50,14 @@ impl<R: SecretReader, S: Store> Handler<R, S> {
 
     fn write_out_value(&self, name: &str, ciphertext: &[u8]) -> anyhow::Result<()> {
         self.store.insert(name, ciphertext).with_context(|| {
-            format!("An error occurred when attempting to insert the entry `{name}`:")
+            format!("An error occurred when attempting to insert the entry `{name}`.")
         })
     }
 
     /// Retrieve a secret from the entry with the value of `name`.
     pub fn retrieve(&self, name: &str) -> anyhow::Result<HandlerResult> {
         let value = self.store.get(name).with_context(|| {
-            format!("An error occurred when attempting to retrieve the entry `{name}`:")
+            format!("An error occurred when attempting to retrieve the entry `{name}`.")
         })?;
         let plaintext = self
             .gpg
@@ -229,7 +229,7 @@ mod test {
         let result = handle(&mut handler, &retrieve_args);
         assert!(result.is_err());
         let partial_error =
-            &format!("An error occurred when attempting to insert the entry `{name}`:");
+            &format!("An error occurred when attempting to insert the entry `{name}`.");
         let err = result.err().unwrap();
         assert!(
             err.to_string().contains(partial_error),
@@ -251,7 +251,7 @@ mod test {
         let result = handle(&mut handler, &retrieve_args);
         assert!(result.is_err());
         let partial_error =
-            &format!("An error occurred when attempting to retrieve the entry `{name}`:");
+            &format!("An error occurred when attempting to retrieve the entry `{name}`.");
         let actual_error = result.err().unwrap();
         assert!(
             actual_error.to_string().contains(partial_error),
