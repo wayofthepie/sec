@@ -19,8 +19,7 @@ pub enum Action {
 
     /// Retrieve the value of the given name.
     Retrieve {
-        /// name of the secret to retrieve. Like insert, this should be a file path to an
-        /// existing entry.
+        /// name of the secret to retrieve
         name: String,
     },
 }
