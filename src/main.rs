@@ -18,11 +18,11 @@ use store::OnDiskStore;
 fn main() -> anyhow::Result<()> {
     let store_dir = format!("{}/{}", "/home/chaospie", PASSWORD_STORE_DIRECTORY);
     let output = TerminalOutput::new(io::stdout());
-    let mut handler = Handler::new(
+    let handler = Handler::new(
         OnDiskStore::new(store_dir),
         StdinSecretReader,
         FileSystemOperations,
     );
-    let result = handle(&mut handler, &Args::parse())?;
+    let result = handle(&handler, &Args::parse())?;
     write_result(result, output)
 }

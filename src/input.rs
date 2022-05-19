@@ -7,7 +7,7 @@ use anyhow::{anyhow, Context};
 
 pub const PASSWORD_STORE_DIRECTORY: &str = ".password-store";
 
-pub fn handle<F, R, S>(handler: &mut Handler<F, R, S>, args: &Args) -> anyhow::Result<HandlerResult>
+pub fn handle<F, R, S>(handler: &Handler<F, R, S>, args: &Args) -> anyhow::Result<HandlerResult>
 where
     R: SecretReader,
     S: Store,
@@ -52,14 +52,14 @@ where
     /// Create a file named with the value of `name` whose contents are taken
     /// from the [`Handler`]'s [`SecretReader`] instance, and encrypted via
     /// the [`Gpg::encrypt`] call.
-    pub fn insert(&mut self, name: &str, key_id: &str) -> anyhow::Result<HandlerResult> {
+    pub fn insert(&self, name: &str, key_id: &str) -> anyhow::Result<HandlerResult> {
         let buf = &self.read_in_secret_value()?;
         let ciphertext = self.gpg.encrypt(key_id, buf.as_ref())?;
         self.write_out_value(name, &ciphertext)?;
         Ok(HandlerResult::Insert(name.to_owned()))
     }
 
-    fn read_in_secret_value(&mut self) -> anyhow::Result<ZeroizedByteVec> {
+    fn read_in_secret_value(&self) -> anyhow::Result<ZeroizedByteVec> {
         self.reader.read_secret()
     }
 
