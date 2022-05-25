@@ -8,7 +8,8 @@ pub struct Args {
 
 #[derive(clap::Subcommand, Debug)]
 pub enum Action {
-    Initialize,
+    /// Initialize the store with the given key id.
+    Initialize { key_id: String },
     /// Insert a value of the given name.
     Insert {
         /// name of the entry

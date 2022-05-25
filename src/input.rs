@@ -1,3 +1,5 @@
+use std::io::Write;
+
 use crate::cli::{Action, Args};
 use crate::fs::FileSystemOperator;
 use crate::gpg::Gpg;
@@ -17,7 +19,7 @@ where
     match &args.action {
         Action::Insert { name, key_id } => handler.insert(name, key_id),
         Action::Retrieve { name } => handler.retrieve(name),
-        Action::Initialize => handler.initialize(),
+        Action::Initialize { key_id } => handler.initialize(key_id),
     }
 }
 
@@ -82,7 +84,7 @@ where
         Ok(HandlerResult::Retrieve(plaintext))
     }
 
-    pub fn initialize(&self) -> anyhow::Result<HandlerResult> {
+    pub fn initialize(&self, key_id: &str) -> anyhow::Result<HandlerResult> {
         let home_dir = self
             .fs_ops
             .home_dir()
@@ -92,8 +94,10 @@ where
             .map_err(|_| anyhow!("failed to convert path to utf-8 string"))?;
         let store_path = format!("{home_dir}/{}", PASSWORD_STORE_DIRECTORY);
         self.fs_ops.mkdir(&store_path)?;
-        self.fs_ops
+        let mut key_list = self
+            .fs_ops
             .touch(&format!("{store_path}/{GPG_ID_LIST_FILE}"))?;
+        key_list.write_all(key_id.as_bytes())?;
         Ok(HandlerResult::Initialize())
     }
 }
@@ -323,7 +327,9 @@ mod test {
         let tmpdir = tempdir().unwrap();
         let tmpdir = tmpdir.path().to_str().unwrap();
         let args = Args {
-            action: Action::Initialize,
+            action: Action::Initialize {
+                key_id: "".to_string(),
+            },
         };
         let secret_reader = FakeSecretReader {
             secret: RefCell::new("".as_bytes()),
@@ -347,7 +353,9 @@ mod test {
         let tmpdir = tempdir().unwrap();
         let tmpdir = tmpdir.path().to_str().unwrap();
         let args = Args {
-            action: Action::Initialize,
+            action: Action::Initialize {
+                key_id: "".to_string(),
+            },
         };
         let secret_reader = FakeSecretReader {
             secret: RefCell::new("".as_bytes()),
@@ -366,5 +374,34 @@ mod test {
         ))
         .unwrap();
         assert!(Path::exists(&expected_file));
+    }
+
+    #[test]
+    fn initialize_should_create_gpg_id_file_with_given_key() {
+        let expected_key_id = "expected_key_id";
+        let tmpdir = tempdir().unwrap();
+        let tmpdir = tmpdir.path().to_str().unwrap();
+        let args = Args {
+            action: Action::Initialize {
+                key_id: expected_key_id.to_string(),
+            },
+        };
+        let secret_reader = FakeSecretReader {
+            secret: RefCell::new("".as_bytes()),
+        };
+        let store = InMemoryStore::new();
+        let fs_ops = FakeFsOps {
+            home: tmpdir.to_string(),
+        };
+        let handler = Handler::new(store, secret_reader, fs_ops);
+        let result = handle(&handler, &args);
+        let maybe_error = result.as_ref().err();
+        assert!(result.is_ok(), "expected result, got {maybe_error:?}");
+        assert!(result.ok().unwrap() == HandlerResult::Initialize());
+        let key_id = std::fs::read_to_string(&format!(
+            "{tmpdir}/{PASSWORD_STORE_DIRECTORY}/{GPG_ID_LIST_FILE}"
+        ))
+        .unwrap();
+        assert_eq!(key_id, expected_key_id);
     }
 }
