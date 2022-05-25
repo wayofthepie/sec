@@ -85,6 +85,7 @@ where
     }
 
     pub fn initialize(&self, key_id: &str) -> anyhow::Result<HandlerResult> {
+        let _ = self.gpg.does_key_exist(key_id)?;
         let home_dir = self
             .fs_ops
             .home_dir()
@@ -126,6 +127,8 @@ mod test {
         str::FromStr,
     };
     use tempfile::tempdir;
+
+    const EXISTING_GPG_KEY: &str = "passrs-tests@nocht.io";
 
     #[derive(Clone)]
     struct InMemoryStore {
@@ -328,7 +331,7 @@ mod test {
         let tmpdir = tmpdir.path().to_str().unwrap();
         let args = Args {
             action: Action::Initialize {
-                key_id: "".to_string(),
+                key_id: EXISTING_GPG_KEY.to_string(),
             },
         };
         let secret_reader = FakeSecretReader {
@@ -354,7 +357,7 @@ mod test {
         let tmpdir = tmpdir.path().to_str().unwrap();
         let args = Args {
             action: Action::Initialize {
-                key_id: "".to_string(),
+                key_id: EXISTING_GPG_KEY.to_string(),
             },
         };
         let secret_reader = FakeSecretReader {
@@ -378,12 +381,11 @@ mod test {
 
     #[test]
     fn initialize_should_create_gpg_id_file_with_given_key() {
-        let expected_key_id = "expected_key_id";
         let tmpdir = tempdir().unwrap();
         let tmpdir = tmpdir.path().to_str().unwrap();
         let args = Args {
             action: Action::Initialize {
-                key_id: expected_key_id.to_string(),
+                key_id: EXISTING_GPG_KEY.to_string(),
             },
         };
         let secret_reader = FakeSecretReader {
@@ -402,6 +404,6 @@ mod test {
             "{tmpdir}/{PASSWORD_STORE_DIRECTORY}/{GPG_ID_LIST_FILE}"
         ))
         .unwrap();
-        assert_eq!(key_id, expected_key_id);
+        assert_eq!(key_id, EXISTING_GPG_KEY);
     }
 }
