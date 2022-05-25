@@ -6,6 +6,7 @@ use crate::store::Store;
 use anyhow::{anyhow, Context};
 
 pub const PASSWORD_STORE_DIRECTORY: &str = ".password-store";
+pub const GPG_ID_LIST_FILE: &str = ".gpg-id";
 
 pub fn handle<F, R, S>(handler: &Handler<F, R, S>, args: &Args) -> anyhow::Result<HandlerResult>
 where
@@ -89,15 +90,17 @@ where
             .into_os_string()
             .into_string()
             .map_err(|_| anyhow!("failed to convert path to utf-8 string"))?;
+        let store_path = format!("{home_dir}/{}", PASSWORD_STORE_DIRECTORY);
+        self.fs_ops.mkdir(&store_path)?;
         self.fs_ops
-            .create_dir(&format!("{home_dir}/{}", PASSWORD_STORE_DIRECTORY))?;
+            .touch(&format!("{store_path}/{GPG_ID_LIST_FILE}"))?;
         Ok(HandlerResult::Initialize())
     }
 }
 
 #[cfg(test)]
 mod test {
-    use super::{HandlerResult, PASSWORD_STORE_DIRECTORY};
+    use super::{HandlerResult, GPG_ID_LIST_FILE, PASSWORD_STORE_DIRECTORY};
     use crate::{
         cli::Action,
         fs::FileSystemOperator,
@@ -189,9 +192,13 @@ mod test {
             Some(PathBuf::from_str(&self.home).unwrap())
         }
 
-        fn create_dir<P: AsRef<std::path::Path>>(&self, path: P) -> anyhow::Result<()> {
+        fn mkdir<P: AsRef<std::path::Path>>(&self, path: P) -> anyhow::Result<()> {
             std::fs::create_dir(path.as_ref().to_str().unwrap()).unwrap();
             Ok(())
+        }
+
+        fn touch<P: AsRef<Path>>(&self, path: P) -> anyhow::Result<File> {
+            Ok(std::fs::File::create(path).unwrap())
         }
     }
 
@@ -211,9 +218,8 @@ mod test {
             secret: RefCell::new(input.as_bytes()),
         };
         let store = InMemoryStore::new();
-        let mut handler = Handler::new(store.clone(), secret_reader, FakeFsOps::default());
-        if let HandlerResult::Insert(name) = handle(&mut handler, &args).expect("expected a result")
-        {
+        let handler = Handler::new(store.clone(), secret_reader, FakeFsOps::default());
+        if let HandlerResult::Insert(name) = handle(&handler, &args).expect("expected a result") {
             let ciphertext = store.get(name).unwrap();
             let plaintext = gpg.decrypt(&ciphertext).unwrap();
             assert_eq!(&*plaintext, input.trim());
@@ -234,10 +240,10 @@ mod test {
             secret: RefCell::new(input.as_bytes()),
         };
         let store = InMemoryStore::new();
-        let mut handler = Handler::new(store, secret_reader, FakeFsOps::default());
+        let handler = Handler::new(store, secret_reader, FakeFsOps::default());
         handler.insert(&name, GPG_KEY_ID).unwrap();
         if let HandlerResult::Retrieve(value) =
-            handle(&mut handler, &retrieve_args).expect("expected a result")
+            handle(&handler, &retrieve_args).expect("expected a result")
         {
             assert_eq!(&*value, input.trim());
             return;
@@ -256,8 +262,8 @@ mod test {
         };
         let store = InMemoryStore::new();
         store.insert(name.clone(), b"").unwrap();
-        let mut handler = Handler::new(store, secret_reader, FakeFsOps::default());
-        let result = handle(&mut handler, &retrieve_args);
+        let handler = Handler::new(store, secret_reader, FakeFsOps::default());
+        let result = handle(&handler, &retrieve_args);
         assert!(result.is_err());
         assert_eq!(
             result.err().unwrap().to_string(),
@@ -278,8 +284,8 @@ mod test {
             secret: RefCell::new("secret\n".as_bytes()),
         };
         let store = IoErrorStore;
-        let mut handler = Handler::new(store, secret_reader, FakeFsOps::default());
-        let result = handle(&mut handler, &retrieve_args);
+        let handler = Handler::new(store, secret_reader, FakeFsOps::default());
+        let result = handle(&handler, &retrieve_args);
         assert!(result.is_err());
         let partial_error =
             &format!("An error occurred when attempting to insert the entry `{name}`.");
@@ -300,8 +306,8 @@ mod test {
             secret: RefCell::new("".as_bytes()),
         };
         let store = IoErrorStore;
-        let mut handler = Handler::new(store, secret_reader, FakeFsOps::default());
-        let result = handle(&mut handler, &retrieve_args);
+        let handler = Handler::new(store, secret_reader, FakeFsOps::default());
+        let result = handle(&handler, &retrieve_args);
         assert!(result.is_err());
         let partial_error =
             &format!("An error occurred when attempting to retrieve the entry `{name}`.");
@@ -326,13 +332,39 @@ mod test {
         let fs_ops = FakeFsOps {
             home: tmpdir.to_string(),
         };
-        let mut handler = Handler::new(store, secret_reader, fs_ops);
-        let result = handle(&mut handler, &args);
+        let handler = Handler::new(store, secret_reader, fs_ops);
+        let result = handle(&handler, &args);
         let maybe_error = result.as_ref().err();
         assert!(result.is_ok(), "expected result, got {maybe_error:?}");
         assert!(result.ok().unwrap() == HandlerResult::Initialize());
         let expected_dir =
             PathBuf::from_str(&format!("{tmpdir}/{PASSWORD_STORE_DIRECTORY}")).unwrap();
         assert!(Path::exists(&expected_dir));
+    }
+
+    #[test]
+    fn initialize_should_create_gpg_id_file() {
+        let tmpdir = tempdir().unwrap();
+        let tmpdir = tmpdir.path().to_str().unwrap();
+        let args = Args {
+            action: Action::Initialize,
+        };
+        let secret_reader = FakeSecretReader {
+            secret: RefCell::new("".as_bytes()),
+        };
+        let store = InMemoryStore::new();
+        let fs_ops = FakeFsOps {
+            home: tmpdir.to_string(),
+        };
+        let handler = Handler::new(store, secret_reader, fs_ops);
+        let result = handle(&handler, &args);
+        let maybe_error = result.as_ref().err();
+        assert!(result.is_ok(), "expected result, got {maybe_error:?}");
+        assert!(result.ok().unwrap() == HandlerResult::Initialize());
+        let expected_file = PathBuf::from_str(&format!(
+            "{tmpdir}/{PASSWORD_STORE_DIRECTORY}/{GPG_ID_LIST_FILE}"
+        ))
+        .unwrap();
+        assert!(Path::exists(&expected_file));
     }
 }
