@@ -1,5 +1,6 @@
 use crate::secrets::{ZeroizedByteVec, ZeroizedString};
-use gpgme::{Context, Data, Protocol};
+use anyhow::Context;
+use gpgme::{Data, Protocol};
 
 /// Wrapper for GPG functionality.
 pub struct Gpg {
@@ -16,7 +17,7 @@ impl Gpg {
 
     /// Encrypt the given plaintext bytes with the key indentified by the key ID.
     pub fn encrypt(&self, key_id: &str, plaintext: &[u8]) -> anyhow::Result<Vec<u8>> {
-        let mut context = Context::from_protocol(self.protocol)?;
+        let mut context = gpgme::Context::from_protocol(self.protocol)?;
         let key = context.get_key(key_id)?;
         let mut ciphertext = Vec::new();
         context.encrypt(&[key], plaintext, &mut ciphertext)?;
@@ -25,11 +26,20 @@ impl Gpg {
 
     /// Decrypt the given ciphertext.
     pub fn decrypt(&self, ciphertext: &[u8]) -> anyhow::Result<ZeroizedString> {
-        let mut context = Context::from_protocol(self.protocol)?;
+        let mut context = gpgme::Context::from_protocol(self.protocol)?;
         let mut input = Data::from_bytes(ciphertext)?;
         let mut output = ZeroizedByteVec::new(Vec::new());
         context.decrypt(&mut input, &mut *output)?;
         Ok(output.into_zeroized_string())
+    }
+
+    /// Returns whether the key exists.
+    pub fn does_key_exist(&self, key_id: &str) -> anyhow::Result<()> {
+        let mut context = gpgme::Context::from_protocol(self.protocol)?;
+        context
+            .get_key(key_id)
+            .with_context(|| format!("Unable to find key with id {key_id}!"))
+            .map(|_| ())
     }
 }
 
@@ -41,6 +51,8 @@ impl Default for Gpg {
 
 #[cfg(test)]
 pub mod test {
+    use uuid::Uuid;
+
     use crate::gpg::Gpg;
     use std::{
         env,
@@ -96,5 +108,19 @@ pub mod test {
             .expect("ciphertext encryption error");
         let plaintext = gpg.decrypt(&ciphertext).expect("plaintext");
         assert_eq!(&*plaintext, expected);
+    }
+
+    #[test]
+    fn should_error_if_key_does_not_exist() {
+        import_keys();
+        let uuid = Uuid::new_v4();
+        let gpg = Gpg::new();
+        let key_id = uuid.to_string();
+        let result = gpg.does_key_exist(&key_id);
+        assert!(result.is_err());
+        assert_eq!(
+            result.err().unwrap().to_string(),
+            format!("Unable to find key with id {}!", key_id)
+        );
     }
 }
