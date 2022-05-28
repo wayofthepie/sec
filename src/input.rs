@@ -1,11 +1,10 @@
-use std::io::Write;
-
 use crate::cli::{Action, Args};
 use crate::fs::FileSystemOperator;
 use crate::gpg::Gpg;
 use crate::secrets::{SecretReader, ZeroizedByteVec, ZeroizedString};
 use crate::store::Store;
 use anyhow::{anyhow, Context};
+use std::io::Write;
 
 pub const PASSWORD_STORE_DIRECTORY: &str = ".password-store";
 pub const GPG_ID_LIST_FILE: &str = ".gpg-id";
